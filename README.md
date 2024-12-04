@@ -2,7 +2,7 @@
 
 Esse é um projeto de um jogo da velha  com criptografia AES e comunicação via UDP
 
-> :construction: O projeto precisa de algumas melhorias para desencripitar as mensagens recebidas, que vem com tamanho que não é multiplo de 16 :construction:
+> :construction: O projeto necessita de melhorias no processo de descriptografia das mensagens recebidas, que atualmente possuem tamanhos incompatíveis com o requisito de serem múltiplos de 16 :construction:
 
 ## Comandos para rodar o programa no prompt, ja estando todos os prompt no diretorio que esta o programa:
 
