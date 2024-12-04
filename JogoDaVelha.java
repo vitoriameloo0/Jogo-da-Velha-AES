@@ -2,12 +2,13 @@ package Game;
 
 import java.awt.Font;
 import java.awt.event.ActionEvent;
+
+import javax.crypto.Cipher;
+import javax.crypto.spec.SecretKeySpec;
 import javax.swing.*;
 import java.net.*;
-import javax.crypto.Cipher;
-import javax.crypto.KeyGenerator;
-import javax.crypto.SecretKey;
-import javax.crypto.spec.SecretKeySpec;
+import java.security.MessageDigest;
+import java.util.Arrays;
 import java.util.Base64;
 
 
@@ -30,25 +31,18 @@ public class JogoDaVelha extends JFrame {
     DatagramSocket socket;
     InetAddress serverAddress;
     int serverPort = 6789;
-    
-    // Variaveis para criptografia
-    private static final String AES_ALGORITHM = "AES";
-    private SecretKey aesKey;
-    
 
+    // Variaveis para a criptografia
+    public String encriptada = "";
+	public String aEncriptar = "";
+	String chaveSimetrica = "Chave12345678901";
+	
     public JogoDaVelha(final String jogadorSimbolo) {
         this.jogadorSimbolo = jogadorSimbolo;
 
         try {
-        	// Geração de um chave para o algoritmo de criptografia AES
-        	KeyGenerator keyGen = KeyGenerator.getInstance(AES_ALGORITHM);
-        	keyGen.init(128); // Tamanho de 128 bits
-        	aesKey = keyGen.generateKey();
-        	
-        	// Conexão como o servidor   	
             socket = new DatagramSocket();
             serverAddress = InetAddress.getByName("localhost"); // Endereço do servidor 
-            
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -75,7 +69,7 @@ public class JogoDaVelha extends JFrame {
         novo.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(ActionEvent e) {
                 limpar();
-                enviarMensagem("NOVO_JOGO");
+                enviarMensagem("NOVOJOGO");
             }
         });
 
@@ -85,7 +79,7 @@ public class JogoDaVelha extends JFrame {
                 PO = 0;
                 PX = 0;
                 atualizar();
-                enviarMensagem("ZERAR_PLACAR");
+                enviarMensagem("ZERARPLACAR");
             }
         });
 
@@ -161,27 +155,25 @@ public class JogoDaVelha extends JFrame {
         }
 
         if (verificarVitoria("X")) {
-            //JOptionPane.showMessageDialog(null, "X ganhou");
             PX++;
             atualizar();
             limpar();
             enviarMensagem("VITORIA:" + "X");        
-            enviarMensagem("ATUALIZAR_PLACAR:X:" + PX + ":O:" + PO);
-            enviarMensagem("NOVO_JOGO");
+            enviarMensagem("ATUALIZARPLACAR:X:" + PX + ":O:" + PO);
+            enviarMensagem("NOVOJOGO");
             
         } else if (verificarVitoria("O")) {
-            //JOptionPane.showMessageDialog(null, "O ganhou");
             PO++;
             atualizar();
             limpar();
             enviarMensagem("VITORIA:" + "O"); 
-            enviarMensagem("ATUALIZAR_PLACAR:X:" + PX + ":O:" + PO);
-            enviarMensagem("NOVO_JOGO");
+            enviarMensagem("ATUALIZARPLACAR:X:" + PX + ":O:" + PO);
+            enviarMensagem("NOVOJOGO");
             
         } else if (cont == 9) {
             JOptionPane.showMessageDialog(null, "Empate");
             limpar();
-            enviarMensagem("NOVO_JOGO");
+            enviarMensagem("NOVOJOGO");
         }
     }
     
@@ -209,102 +201,150 @@ public class JogoDaVelha extends JFrame {
     public void enviarJogada(int index, String player) {
         enviarMensagem(index + ":" + player);
     }
-    
-    // Metodo de criptografia 
-    private String encrypt(String plainText) throws Exception {
-    	Cipher cipher = Cipher.getInstance(AES_ALGORITHM);
-    	cipher.init(Cipher.ENCRYPT_MODE, aesKey);
-    	byte[] encryptedBytes = cipher.doFinal(plainText.getBytes());
-    	String encryptedString = Base64.getEncoder().encodeToString(encryptedBytes);
-    	
-    	System.out.println("METODO DE CRIPTOGRAFIA");
-    	System.out.println("Mensagem original: " + plainText);
-        System.out.println("Mensagem criptografada: " + encryptedString);
-        
-    	return encryptedString;
-    }
-    
-    private String decrypt(String encryptedText) throws Exception {
-    	Cipher cipher = Cipher.getInstance(AES_ALGORITHM);
-    	cipher.init(Cipher.DECRYPT_MODE, aesKey);
-    	byte[] decodedBytes = Base64.getDecoder().decode(encryptedText);
-        byte[] decryptedBytes = cipher.doFinal(decodedBytes);
-        
-        System.out.println("METODO DE DESCRIPTOGRAFIA");
-    	System.out.println("Mensagem original: " + encryptedText);
-        System.out.println("Mensagem criptografada: " + decryptedBytes);
-        
-        return new String(decryptedBytes);
-    }
-    
 
     public void enviarMensagem(String message) {
-        try {
-        	String encryptedMessage = encrypt(message);
-            byte[] m = encryptedMessage.getBytes();
-            System.out.println("Mensagem criptografada (tamanho): " + encryptedMessage.length());
+        try {                     
+            String mensagemCriptografada = Encriptar(message, chaveSimetrica);
+            
+            // Converte a mensagem criptografada para bytes e enviar
+            byte[] m = mensagemCriptografada.getBytes();
             DatagramPacket request = new DatagramPacket(m, m.length, serverAddress, serverPort);
             socket.send(request);
-            
         } catch (Exception e) {
             e.printStackTrace();
         }
-    }   
+    }
+    
 
     public void processarMensagem(String message) {
-    	try {
-    		String decryptedMessage = decrypt(message);
-    		
-    		if (decryptedMessage.equals("NOVO_JOGO")) {      
-    			limpar();
-            
-	        } else if (decryptedMessage.equals("ZERAR_PLACAR")) {        	
-	        	PO = 0;
-	            PX = 0;
-	            atualizar();
-	            
-	        } else if (decryptedMessage.startsWith("ATUALIZAR_PLACAR:")) {       	
-	            String[] parts = decryptedMessage.split(":");
-	            PX = Integer.parseInt(parts[2]);
-	            PO = Integer.parseInt(parts[4]);
-	            atualizar();
-	            
-	        } else if (decryptedMessage.equals("SUA_VEZ")) {        	
-	            minhaVez = true;
-	            
-	        } else if (decryptedMessage.startsWith("VITORIA:")) {       
-	        	String[] parts = decryptedMessage.split(":");
-	            String vencedor = parts[1].trim();           
-	            JOptionPane.showMessageDialog(null, vencedor + " ganhou");
-	
-	        }
-	        else {
-	            String[] parts = decryptedMessage.split(":");              
-	            if(parts.length > 1 && isNumeric(parts[0])) {            	
-	            	int index = Integer.parseInt(parts[0]);
-	            	String player = parts[1];            	
-	            	bt[index].setText(player);
-	            	click[index] = true;
-	            	minhaVez = !jogadorSimbolo.equals(player) ? false : true;
-	            	
-	            }  
-	        }
-		
-    	} catch (Exception e) {
+        try{                 
+            String mensagemOriginal = Decriptar(message, chaveSimetrica);
+
+            if (mensagemOriginal.equals("NOVOJOGO")) {      
+                limpar();
+                
+            } else if (mensagemOriginal.equals("ZERARPLACAR")) {        	
+                PO = 0;
+                PX = 0;
+                atualizar();
+                
+            } else if (mensagemOriginal.startsWith("ATUALIZARPLACAR:")) {       	
+                String[] parts = mensagemOriginal.split(":");
+                PX = Integer.parseInt(parts[2]);
+                PO = Integer.parseInt(parts[4]);
+                atualizar();
+                
+            } else if (mensagemOriginal.equals("SUAVEZ")) {        	
+                minhaVez = true;
+                
+            } else if (mensagemOriginal.startsWith("VITORIA:")) {       
+                String[] parts = mensagemOriginal.split(":");
+                String vencedor = parts[1].trim();               
+                JOptionPane.showMessageDialog(null, vencedor + " ganhou");
+
+            }
+            else {
+                String[] parts = mensagemOriginal.split(":");
+ 
+                if(parts.length > 1 && isNumeric(parts[0])) {                    
+                    int index = Integer.parseInt(parts[0]);
+                    String player = parts[1]; 
+                    bt[index].setText(player);
+                    click[index] = true;
+                    minhaVez = jogadorSimbolo.equals(player) ? false : true;                    
+                }  
+            }
+        } catch(Exception e){
             e.printStackTrace();
         }
-    	  
     }
     
     private boolean isNumeric(String str) {
     	try {
-            int num = Integer.parseInt(str);
-            return num >= 0 && num <= 8;  // Verifica se o índice está entre 0 e 8
-                      
+            Integer.parseInt(str);
+            return true;
         } catch (NumberFormatException e) {
             return false;
         }
     }
+    
+    // Cria uma chave criptografada  
+ 	public SecretKeySpec CriarChave(String chaveSimetrica) {
+ 		try {
+ 			// Converte para bytes a chave string
+ 			byte[] chave = chaveSimetrica.getBytes("Cp1252");		// Pode ser UTF-8; Mudar nas configuracoes do eclipse tambem
+ 			
+ 			// Criptografo com hash a chave
+ 			MessageDigest md = MessageDigest.getInstance("SHA-1");
+ 			chave = md.digest(chave);
+ 			
+ 			/* Com o copyOf, valida a chave para ser no minimo x bits (indicado), bits insuficientes ele completa. 
+ 			 * Se chave passar de 32 bits ele capitura somente x bits (indicado).	
+ 			 * */
+ 			chave = Arrays.copyOf(chave, 32); 
+ 			SecretKeySpec secretKeySpec = new SecretKeySpec(chave, "AES");
+ 			return secretKeySpec;
+ 			
+ 			/*System.out.println(new String(chave));
+ 			for (int i = 0;i< new String(chave).length(); i++) {
+ 				System.out.printf("[%d] %c\n",i,new String(chave).charAt(i));
+ 				
+ 			}*/
+ 		} catch (Exception e) {
+ 			// TODO: handle exception
+ 			System.err.println("\nErro ao criar chave: \n");
+ 			e.printStackTrace();
+ 			return null;
+ 		}
+ 		
+ 	}
+ 	
+ 	// Encriptar uma mensagem. Recebe mensagem e chave do tipo string. Retorna string criptografada.
+ 	public String Encriptar(String encriptar, String chaveSimetrica) {
+ 		try {
+ 			SecretKeySpec secretKeySpec = CriarChave(chaveSimetrica);
+ 			
+ 			//Seleciona o algoritmo AES e a opcao de criptografar com a chave definida anteriormente
+ 			Cipher cipher = Cipher.getInstance("AES");
+ 			cipher.init(Cipher.ENCRYPT_MODE,secretKeySpec);
+ 			
+ 			//Converte strinf para bytes, pois a classe cipher usa vetor de bytes
+ 			byte [] mensagem = encriptar.getBytes("Cp1252");
+ 			byte [] mensagemEncriptada = cipher.doFinal(mensagem);	//doFinal: Criptografa ou descriptografa dados em uma opera  o de parte  nica ou finaliza uma opera  o de v rias partes
+ 			
+ 			// converter de novo para string
+ 			String mensagemEncriptadaString  = Base64.getEncoder().encodeToString(mensagemEncriptada);
+ 			return mensagemEncriptadaString;
+ 			
+ 		} catch (Exception e) {
+ 			// TODO: handle exception
+ 			System.err.println("\nErro ao encriptar mensagem: \n");
+ 			e.printStackTrace();
+ 			return null;
+ 		}
+ 	}
+ 	
+ 	// Decriptar uma mensagem. Recebe mensagem e chave do tipo string. Retorna string decriptografada.
+ 	public String Decriptar(String decriptar, String chaveSimetrica) {
+ 		try {
+ 			SecretKeySpec secretKeySpec = CriarChave(chaveSimetrica);
+ 			Cipher cipher = Cipher.getInstance("AES");
+ 			
+ 			//Seleciona o algoritmo AES e a opcao de degriptografar com a chave definida anteriormente
+ 			cipher.init(Cipher.DECRYPT_MODE,secretKeySpec);
+ 			
+ 			byte [] mensagem = Base64.getDecoder().decode(decriptar);
+ 			byte [] mensagemDecriptada = cipher.doFinal(mensagem);
+ 			String mensagemDecriptadaString  = new String(mensagemDecriptada);
+ 			return mensagemDecriptadaString;
+ 			
+ 		} catch (Exception e) {
+ 			// TODO: handle exception
+ 			System.err.println("\nErro ao decriptar mensagem: \n");
+ 			e.printStackTrace();
+ 			return null;
+ 		}
+ 	}
 
     public static void main(String[] args) {
         String jogadorSimbolo = args.length > 0 ? args[0] : "X";
