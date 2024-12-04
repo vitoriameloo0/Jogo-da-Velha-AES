@@ -1,24 +1,25 @@
 package Game; 
 
-
 import java.net.*;
+import java.security.MessageDigest;
 import java.io.*;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Base64;
 import java.util.List;
 import javax.crypto.Cipher;
-import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
-import java.util.Base64;
+
 
 public class UDPServer {
     private static List<InetAddress> clientAddresses = new ArrayList<InetAddress>();
     private static List<Integer> clientPorts = new ArrayList<Integer>();
     private static boolean turnoX = true; // Turno do jogador X
     
-    private static final String AES_ALGORITHM = "AES";
-    private static final byte[] AES_KEY_BYTES = "chave123456789012".getBytes(); // Chave de 16 bytes
-    private static final SecretKey aesKey = new SecretKeySpec(AES_KEY_BYTES, AES_ALGORITHM);
-
+    
+    private static String chaveSimetrica = "Chave12345678901";
+    public String encriptada = "";
+	public String aEncriptar = "";
 
     public static void main(String[] args) throws Exception {
         DatagramSocket aSocket = null;
@@ -41,45 +42,47 @@ public class UDPServer {
                 if (!clientAddresses.contains(clientAddress) || !clientPorts.contains(clientPort)) {
                     clientAddresses.add(clientAddress);
                     clientPorts.add(clientPort);
-                    System.out.println("Novo cliente registrado: " + clientAddress + ":" + clientPort); // Imprime o novo cliente
+                    System.out.println("Novo cliente registrado: " + clientAddress + ":" + clientPort + "\n"); // Imprime o novo cliente
                     
                 }
                 
-                // Descriptografar a mensagem recebida
-                String receivedMessage = decrypt(new String(request.getData(), 0, request.getLength()));
-                System.out.println("Mensagem recebida: " + receivedMessage);
-                System.out.println("Mensagem recebida (tamanho): " + receivedMessage.length());
-
-
+                // A mensagem recebida é transformada em String               
+                String mensagemRecebida = new String(request.getData(), 0, request.getLength());
+                System.out.println("Mensagem recebida: " + mensagemRecebida);
                 
-                // Processamento de comandos
-                if (receivedMessage.equals("NOVO_JOGO") || receivedMessage.equals("ZERAR_PLACAR")) {
-                	System.out.println("Comando recebido: " + receivedMessage);
-                    broadcastMessage(receivedMessage, aSocket);
+                
+                // Descriptografar a mensagem recebida
+                String decryptedMessage = Decriptar(mensagemRecebida, chaveSimetrica);
+                System.out.println("Mensagem descriptografada: " + decryptedMessage);
+                
+                
+                if (decryptedMessage.equals("NOVOJOGO") || decryptedMessage.equals("ZERARPLACAR")) {
+                    broadcastMessage(decryptedMessage, aSocket, request);
                     turnoX = true; // Reinicia para o jogador X
                     notificarTurno();
                     
                 
-                } else if (receivedMessage.startsWith("ATUALIZAR_PLACAR:")) {
-                	System.out.println("Comando de atualização de placar recebido: " + receivedMessage);
-                	broadcastMessage(receivedMessage, aSocket);
+                } else if (decryptedMessage.startsWith("ATUALIZARPLACAR:")) {                	
+                    broadcastMessage(decryptedMessage, aSocket, request);
                 
-                }else if (receivedMessage.startsWith("VITORIA:")) {
-                	System.out.println("Comando de vitória recebido: " + receivedMessage); 
-                	broadcastMessage(receivedMessage, aSocket);
+                    
+                }else if (decryptedMessage.startsWith("VITORIA:")) {                 
+                    broadcastMessage(decryptedMessage, aSocket, request);
+                    
                 } 
-
                 else {
                     // Adicionar turno do jogador
-                    String[] parts = receivedMessage.split(":");
+                    String[] parts = decryptedMessage.split(":");
                     int index = Integer.parseInt(parts[0]);
                     String player = parts[1];
-                    System.out.println("Jogador " + player + " fez um movimento na posição " + index);
+                    
+                    System.out.println("Jogador " + player + " fez um movimento na posição " + index + "\n");
                     
                     String updatedMessage = index + ":" + player;
+                    String encryptedMessage = Encriptar(updatedMessage, chaveSimetrica);
 
                     for (int i = 0; i < clientAddresses.size(); i++) {
-                        byte[] m = updatedMessage.getBytes();
+                        byte[] m = encryptedMessage.getBytes();
                         DatagramPacket reply = new DatagramPacket(m, m.length, clientAddresses.get(i), clientPorts.get(i));
                         aSocket.send(reply);
                     }
@@ -97,44 +100,33 @@ public class UDPServer {
         }
     }
     
-    private static void broadcastMessage(String message, DatagramSocket socket) throws Exception {
-        for (int i = 0; i < clientAddresses.size(); i++) {
-            byte[] encryptedMessage = encrypt(message).getBytes();
-            DatagramPacket reply = new DatagramPacket(encryptedMessage, encryptedMessage.length, clientAddresses.get(i), clientPorts.get(i));
-            socket.send(reply);
+    private static void broadcastMessage(String message, DatagramSocket aSocket, DatagramPacket request) throws Exception {
+        for (int i = 0; i < clientAddresses.size(); i++) {   
+            String encryptedMessage = null;
+			try {
+				encryptedMessage = Encriptar(message, chaveSimetrica);
+			} catch (Exception e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}        
+            DatagramPacket reply = new DatagramPacket(encryptedMessage.getBytes(), encryptedMessage.length(), clientAddresses.get(i), clientPorts.get(i));
+            aSocket.send(reply);
         }
     }
     
-    private static String encrypt(String plainText) throws Exception {
-        Cipher cipher = Cipher.getInstance(AES_ALGORITHM);
-        cipher.init(Cipher.ENCRYPT_MODE, aesKey);
-        byte[] encryptedBytes = cipher.doFinal(plainText.getBytes());
-        return Base64.getEncoder().encodeToString(encryptedBytes);
-    }
-
-    private static String decrypt(String encryptedText) throws Exception {
-        Cipher cipher = Cipher.getInstance(AES_ALGORITHM);
-        cipher.init(Cipher.DECRYPT_MODE, aesKey);
-        byte[] decodedBytes = Base64.getDecoder().decode(encryptedText);
-        byte[] decryptedBytes = cipher.doFinal(decodedBytes);
-        return new String(decryptedBytes);
-    }
-
-    
-    
     private static void notificarTurno() {
-        String message = "SUA_VEZ";
+        String message = "SUAVEZ";
         try {
-        	byte[] encryptedMessage = encrypt(message).getBytes();
+            byte[] m = message.getBytes();
             if (turnoX) {
-            	System.out.println("É a vez do jogador X.");
-                DatagramPacket turnoXPacket = new DatagramPacket(encryptedMessage, encryptedMessage.length, clientAddresses.get(0), clientPorts.get(0));
+            	System.out.println("É a vez do jogador X" + "\n");
+                DatagramPacket turnoXPacket = new DatagramPacket(m, m.length, clientAddresses.get(0), clientPorts.get(0));
                 DatagramSocket socket = new DatagramSocket();
                 socket.send(turnoXPacket);
                 socket.close();
             } else {
-            	System.out.println("É a vez do jogador O.");
-                DatagramPacket turnoOPacket = new DatagramPacket(encryptedMessage, encryptedMessage.length, clientAddresses.get(1), clientPorts.get(1));
+            	System.out.println("É a vez do jogador O" + "\n");
+                DatagramPacket turnoOPacket = new DatagramPacket(m, m.length, clientAddresses.get(1), clientPorts.get(1));
                 DatagramSocket socket = new DatagramSocket();
                 socket.send(turnoOPacket);
                 socket.close();
@@ -143,4 +135,83 @@ public class UDPServer {
             e.printStackTrace();
         }
     }
+    
+    
+ // Cria uma chave criptografada  
+ 	public static SecretKeySpec CriarChave(String chaveSimetrica) {
+ 		try {
+ 			// Converte para bytes a chave string
+ 			byte[] chave = chaveSimetrica.getBytes("Cp1252");		// Pode ser UTF-8; Mudar nas configuracoes do eclipse tambem
+ 			
+ 			// Criptografo com hash a chave
+ 			MessageDigest md = MessageDigest.getInstance("SHA-1");
+ 			chave = md.digest(chave);
+ 			
+ 			/* Com o copyOf, valida a chave para ser no minimo x bits (indicado), bits insuficientes ele completa. 
+ 			 * Se chave passar de 32 bits ele capitura somente x bits (indicado).	
+ 			 * */
+ 			chave = Arrays.copyOf(chave, 32); 
+ 			SecretKeySpec secretKeySpec = new SecretKeySpec(chave, "AES");
+ 			return secretKeySpec;
+ 			
+ 			/*System.out.println(new String(chave));
+ 			for (int i = 0;i< new String(chave).length(); i++) {
+ 				System.out.printf("[%d] %c\n",i,new String(chave).charAt(i));
+ 				
+ 			}*/
+ 		} catch (Exception e) {
+ 			// TODO: handle exception
+ 			System.err.println("\nErro ao criar chave: \n");
+ 			e.printStackTrace();
+ 			return null;
+ 		}
+ 		
+ 	}
+ 	
+ 	// Encriptar uma mensagem. Recebe mensagem e chave do tipo string. Retorna string criptografada.
+ 	public static String Encriptar(String encriptar, String chaveSimetrica) {
+ 		try {
+ 			SecretKeySpec secretKeySpec = CriarChave(chaveSimetrica);
+ 			
+ 			//Seleciona o algoritmo AES e a opcao de criptografar com a chave definida anteriormente
+ 			Cipher cipher = Cipher.getInstance("AES");
+ 			cipher.init(Cipher.ENCRYPT_MODE,secretKeySpec);
+ 			
+ 			//Converte strinf para bytes, pois a classe cipher usa vetor de bytes
+ 			byte [] mensagem = encriptar.getBytes("Cp1252");
+ 			byte [] mensagemEncriptada = cipher.doFinal(mensagem);	//doFinal: Criptografa ou descriptografa dados em uma opera  o de parte  nica ou finaliza uma opera  o de v rias partes
+ 			
+ 			// converter de novo para string
+ 			String mensagemEncriptadaString  = Base64.getEncoder().encodeToString(mensagemEncriptada);
+ 			return mensagemEncriptadaString;
+ 			
+ 		} catch (Exception e) {
+ 			// TODO: handle exception
+ 			System.err.println("\nErro ao encriptar mensagem: \n");
+ 			e.printStackTrace();
+ 			return null;
+ 		}
+ 	}
+ 	
+ 	// Decriptar uma mensagem. Recebe mensagem e chave do tipo string. Retorna string decriptografada.
+ 	public static String Decriptar(String decriptar, String chaveSimetrica) {
+ 		try {
+ 			SecretKeySpec secretKeySpec = CriarChave(chaveSimetrica);
+ 			Cipher cipher = Cipher.getInstance("AES");
+ 			
+ 			//Seleciona o algoritmo AES e a opcao de degriptografar com a chave definida anteriormente
+ 			cipher.init(Cipher.DECRYPT_MODE,secretKeySpec);
+ 			
+ 			byte [] mensagem = Base64.getDecoder().decode(decriptar);
+ 			byte [] mensagemDecriptada = cipher.doFinal(mensagem);
+ 			String mensagemDecriptadaString  = new String(mensagemDecriptada);
+ 			return mensagemDecriptadaString;
+ 			
+ 		} catch (Exception e) {
+ 			// TODO: handle exception
+ 			System.err.println("\nErro ao decriptar mensagem: \n");
+ 			e.printStackTrace();
+ 			return null;
+ 		}
+ 	}
 }
